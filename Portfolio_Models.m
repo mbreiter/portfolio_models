@@ -1,15 +1,3 @@
-%% MIE377 (Winter 2018) - Project 1
-% The purpose of this program is to test the out-of-sample performance of 
-% 3 different portfolio optimization models. We will test the following
-% models:
-% 1. MVO
-% 2. MVO with cardinality constraint
-% 3. Black-Litterman model
-%
-%
-% Student Name: Matthew Reiter
-% Student ID: 1002246722
-
 clc
 clear all
 format long
@@ -19,10 +7,10 @@ format long
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Load the stock weekly prices and factors weekly returns
-adjClose = readtable('Project1_Data_adjClose.csv', 'ReadRowNames', true);
+adjClose = readtable('Data_adjClose.csv', 'ReadRowNames', true);
 adjClose.Properties.RowNames = cellstr(datetime(adjClose.Properties.RowNames));
 
-factorRet = readtable('Project1_Data_FF_factors.csv', 'ReadRowNames', true);
+factorRet = readtable('Data_FF_factors.csv', 'ReadRowNames', true);
 factorRet.Properties.RowNames = cellstr(datetime(factorRet.Properties.RowNames));
 
 riskFree = factorRet(:,4);
