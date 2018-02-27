@@ -1,8 +1,3 @@
-clc
-clear all
-format long
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% 1. Read input files
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -87,10 +82,20 @@ toDay = 0;
 % a variable called portfValue declared later in this section.
 currentVal = zeros(NoPeriods, NoMethods);
 
-% the two following parameters will be used in section to track each
-% portfolios average returns.
+% tCost tracks the transcaction costs incurred from rebalancing
+tCost = zeros(NoPeriods-1, NoMethods);
+
+% Define the following to keep track of our realized long term rate of
+% return. That is, what would be the daily return of the portfolio, benchmarked
+% against the first day of the simulation. 
 avgReturnsInitial = zeros(NoPeriods, NoMethods);
+
+% Define the following to keep track of our per daily rate of returns period 
+% benchmarked per period
 avgReturnsPeriod = zeros(NoPeriods, NoMethods);
+
+% Track the variance of each of our portfolio's value per period
+portVar = zeros(NoPeriods,NoMethods);
 
 for t = 1:NoPeriods    
     % Subset the returns and factor returns corresponding to the current
@@ -128,7 +133,7 @@ for t = 1:NoPeriods
     beta = zeros(4,20);
     
     for i=1:size(periodReturns,2)
-        beta(:,i) = regress(periodReturns(:,i),X);
+        beta(:,i) = regress( periodReturns(:,i),X);
     end
     
     % we calculuate our regression residuals and covariances
@@ -160,33 +165,28 @@ for t = 1:NoPeriods
          
     % calculate the optimal number of shares of each stock you should hold
     for i = 1:NoMethods
-        
         % number of shares your portfolio holds per stock
         NoShares{i} = x{i}(:,t) .* currentVal(t,i) ./ currentPrices;
         
         % weekly portfolio value during the out-of-sample window
         portfValue(fromDay:toDay,i) = periodPrices * NoShares{i};
         
-        % *************** WRITE YOUR CODE HERE ***************
-        %------------------------------------------------------------------
+        % Calculate your transaction costs for the current rebalance period
+        if t ~= 1
+            tCost(t-1, i) = 0.005*currentPrices'*abs(NoSharesOld{i} - NoShares{i});        
+        end
         
-        % Calculate your transaction costs for the current rebalance
-        % period. The first period does not have any cost since you are
-        % constructing the portfolios for the 1st time. 
-        
-        % if t ~= 1
-           
-        %    tCost(t-1, i) = 
-            
-        % end
-        
-        % NoSharesOld{i} = NoShares{i};
-        %------------------------------------------------------------------    
+        NoSharesOld{i} = NoShares{i};
     end
     
-    avgReturnsInitial(t,:) = geomean((portfValue(fromDay:toDay,:) - initialVal) / initialVal + 1) - 1;
-    avgReturnsPeriod(t,:) = geomean((portfValue(fromDay:toDay,:) - repmat(currentVal(2,:), size(portfValue(fromDay:toDay,:),1), 1)) ./ repmat(currentVal(2,:), size(portfValue(fromDay:toDay,:),1), 1) + 1) - 1;
-
+    % Complete our per period analysis calculations
+    initial_returns = (portfValue(fromDay:toDay,:) - initialVal) / initialVal;
+    period_returns = ( portfValue(fromDay:toDay,:) - repmat(currentVal(t,:), size(portfValue(fromDay:toDay,:),1), 1) ) ./ repmat(currentVal(t,:), size(portfValue(fromDay:toDay,:),1), 1);
+    
+    avgReturnsInitial(t,:) = geomean(initial_returns + 1) - 1;
+    avgReturnsPeriod(t,:) = geomean(period_returns + 1) - 1;
+    portVar(t,:) = [cov(period_returns(:,1)) cov(period_returns(:,2)) cov(period_returns(:,3))];
+    
     % update your calibration and out-of-sample test periods
     calStart = calStart + calmonths(6);
     calEnd = calStart + calmonths(12) - days(1);
@@ -202,21 +202,76 @@ for t = 1:NoPeriods
 end
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% %% 4. Results
-% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-% % Calculate the portfolio average return, variance (or standard deviation),
-% % or any other performance and/or risk metric you wish to include in your
-% % report.
+%% 4. Results
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+% my avgReturnsInitial metric provides an average return of the value of the 
+% portfolio at the end of each rebalancing period based on the initial value 
+% as a benchmark. Used to track what kind of return an investor who invested 
+% at the beginning would realize at the end. Note that I calculate this above
+avgReturnsInitial;
+
+% my avgReturnsPeriod metric is similar to avgReturnsInitial, but tracks 
+% performance based on the value of the portfolio at the beginning of each
+% investing period. Tracks the return an investor can expect by investing
+% at each period. 
+avgReturnsPeriod;
 
 % maximum value of each portfolio and the realization date
-[max, when_max] = max(portfValue);
+[maxVal, when_max] = max(portfValue);
+clear max
 
 % minimum value of each portfolio and the realization date
-[min, when_min] = min(portfValue);
+[minVal, when_min] = min(portfValue);
+clear min
 
-%   largest-day-to-day gain, smallest-day-to-day
-%   gain, largest-day-to-day loss, smallest-day-to-day loss, longest
-%   winning streak, longest losing streak,
+% calculate weekly differences and find the largest week to week gain, and
+% the smallest week to week gain.
+difference = portfValue(2:end,:) - portfValue(1:end-1,:);
+
+lwg = zeros(2, NoMethods);
+lwl = zeros(2, NoMethods);
+
+for i=1:NoMethods
+    [lwg(1,i),lwg(2,i)] = max(difference(:,i));
+    [lwl(1,i),lwl(2,i)] = min(difference(:,i));
+    
+    clear max min
+end
+
+% calculate the longest winning and losing streak
+streak = zeros(4, NoMethods);
+counter = zeros(2,1);
+
+for i=1:NoMethods
+    for j=1:size(difference,1)
+        if difference(j,i) < 0
+            % gain streak is over, so update our gain streak
+            if streak(1,i) < counter(1)
+                streak(1,i) = counter(1);
+                streak(2,i) = j;
+            end
+            
+            counter(1) = 0;
+            
+            % increment up our loss streak
+            counter(2) = counter(2) + 1;
+        elseif difference(j,i) > 0
+            % loss streak is over, so update our loss streak
+            if streak(3,i) < counter(2)
+                streak(3,i) = counter(2);
+                streak(4,i) = j;
+
+            end
+            counter(2) = 0;
+            
+            % increment up our gain streak
+            counter(1) = counter(1) + 1;
+        end
+    end
+    
+    counter = zeros(2,1);
+end
 
 % %--------------------------------------------------------------------------
 % % 4.1 Plot the portfolio values 
@@ -255,7 +310,7 @@ print(fig1,'portfolio-values','-dpng','-r0');
 fig2 = figure(2);
 area(x{1}')
 legend(tickers, 'Location', 'eastoutside','FontSize',12);
-title('Portfolio Weights', 'FontSize', 14)
+title('MVO Portfolio Weights', 'FontSize', 14)
 ylabel('Weights','interpreter','latex','FontSize',12);
 xlabel('Rebalance Period','interpreter','latex','FontSize',12);
 
@@ -265,14 +320,13 @@ pos1 = get(fig2,'Position');
 set(fig2,'PaperPositionMode','Auto','PaperUnits','Inches',...
     'PaperSize',[pos1(3), pos1(4)]);
 
-% If you want to save the figure as .png for use in MS Word
 print(fig2,'mvo-plot','-dpng','-r0');
 
 % MVO with Cardinality Constraints Plot
 fig3 = figure(3);
 area(x{2}')
 legend(tickers, 'Location', 'eastoutside','FontSize',12);
-title('Portfolio Weights', 'FontSize', 14)
+title('MVO-Cardinality Portfolio Weights', 'FontSize', 14)
 ylabel('Weights','interpreter','latex','FontSize',12);
 xlabel('Rebalance Period','interpreter','latex','FontSize',12);
 
@@ -282,17 +336,13 @@ pos1 = get(fig3,'Position');
 set(fig3,'PaperPositionMode','Auto','PaperUnits','Inches',...
     'PaperSize',[pos1(3), pos1(4)]);
 
-% If you want to save the figure as .pdf for use in LaTeX
-% print(fig3,'fileName3','-dpdf','-r0');
-
-% If you want to save the figure as .png for use in MS Word
 print(fig3,'mvocard-plot','-dpng','-r0');
 
 % B-L Model Plot
 fig4 = figure(4);
 area(x{3}')
 legend(tickers, 'Location', 'eastoutside','FontSize',12);
-title('Portfolio Weights', 'FontSize', 14)
+title('BL Portfolio Weights', 'FontSize', 14)
 ylabel('Weights','interpreter','latex','FontSize',12);
 xlabel('Rebalance Period','interpreter','latex','FontSize',12);
 
@@ -302,10 +352,5 @@ pos1 = get(fig4,'Position');
 set(fig4,'PaperPositionMode','Auto','PaperUnits','Inches',...
     'PaperSize',[pos1(3), pos1(4)]);
 
-% If you want to save the figure as .pdf for use in LaTeX
-% print(fig4,'fileName3','-dpdf','-r0');
-
-% If you want to save the figure as .png for use in MS Word
 print(fig4,'bl-plot','-dpng','-r0');
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
