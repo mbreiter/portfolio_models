@@ -23,10 +23,6 @@ function  x_optimal = MVO_card(mu, Q, targetRet, card)
     upper_A = [eye(n) -diag(upper)];
     upper_b = zeros(n,1);
     
-    size(lower_A)
-    size(upper_A)
-    size([mu zeros(n, 1)])
-    
     A = [lower_A; upper_A; [mu; zeros(n, 1)]'];
     b = targetRet;
     
