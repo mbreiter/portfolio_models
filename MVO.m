@@ -8,7 +8,7 @@ function  x_optimal = MVO(mu, Q, targetRet)
     
     % A and b will be used for the constraint for our targetted return. 
     A = -mu';
-    b = targetRet;
+    b = -targetRet;
     
     % Aeq and beq will house our equality constraint, ensuring that the
     % proprotions in our portifolio sum to 1

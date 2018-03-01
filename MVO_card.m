@@ -2,14 +2,32 @@ function  x_optimal = MVO_card(mu, Q, targetRet, card)
     % cardinality constraint - need to hold 12
     % no shortselling permitted
     
-    n = size(Q,1); 
+    n = size(Q,1);
+    
+    % upper asset bound set arbitarily high
+    upper_asset = 1e17;
+    % lower asset bound set arbitarily low
+    lower_asset = -1e17;
     
     % asset covariance matrix
     Q = [Q zeros(n); zeros(n,n*2)];
     
     % inequality constraints
-    % Upper & lower bound constraints
-    A = [mu' zeros(1,n)];
+    % lower bound constraints
+    lower = lower_asset * ones(n,1);
+    lower_A = [-eye(n) diag(lower)];
+    lower_b = zeros(n,1);
+    
+    % upper bound constraints
+    upper = upper_asset * ones(n,1);
+    upper_A = [eye(n) -diag(upper)];
+    upper_b = zeros(n,1);
+    
+    size(lower_A)
+    size(upper_A)
+    size([mu zeros(n, 1)])
+    
+    A = [lower_A; upper_A; [mu; zeros(n, 1)]'];
     b = targetRet;
     
     % equality constraints
@@ -30,8 +48,8 @@ function  x_optimal = MVO_card(mu, Q, targetRet, card)
     model.Q = sparse(Q);
     model.obj = zeros(1,n*2);
     model.A = [sparse(A); sparse(Aeq)];
-    model.rhs = [b; beq];
-    model.sense = ['>', '=', '='];
+    model.rhs = full([lower_b;upper_b;b;beq]);
+    model.sense = [repmat('<',2*n,1);'>';repmat('=',2,1)];
     model.vtype = var_types;
     model.ub = ub;
     model.lb = lb;

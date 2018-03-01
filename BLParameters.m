@@ -8,7 +8,7 @@ function [ P, Omega, q ] = BLParameters(tau, mktNoShares, periodReturns, current
     % 1st View: Pertaining to Company side. Here we assumge that our 10 largest
     % market cap stocks will underperform our 10 smallest cap stocks by 2%
 
-    % We need to first sort (and keep track of indices) for our stocks     
+    % We need to first sort (and keep track of indices) for our stocks
     [order, I] = sort(mktNoShares.*currentPrices);
 
     for i=1:size(order,1)
@@ -22,8 +22,8 @@ function [ P, Omega, q ] = BLParameters(tau, mktNoShares, periodReturns, current
     % no idea why I need to do this but I apparently do
     clear oder clear I
 
-    % Outperformance of our ten largest by 2%
-    q(1) = 0.02;
+    % Outperformance of our ten largest by 3%
+    q(1) = 0.03;
 
     % We calculate our confidence in this view
     Omega(1,1) = tau * P(1,:) * Q * P(1,:)'; 

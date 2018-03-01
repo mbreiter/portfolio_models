@@ -1,3 +1,8 @@
+clc
+clear all
+format long
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% 1. Read input files
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -57,19 +62,17 @@ funList = cellfun(@str2func, funList, 'UniformOutput', false);
 % Maximum number of assets imposed by cardinality constraint
 card = 12;
 
-% Calculating current prices and returns, used for calculating market cap
-% required for a view in our B-L model
+% Get the returns from our assets during our testing period, to be used in
+% our black-litterman framework
 periodReturns = table2array( returns( calStart <= dates & dates <= calEnd, :) );
 currentPrices = table2array( adjClose( ( calEnd - days(7) ) <= dates ... 
                                                     & dates <= calEnd, :) )';
-
-% Let us randomly choose tau to be between 0.01 and 0.05
+                                                
+% let us randomly choose tau to be between 0.01 and 0.05
 tau = 0.05 / randi(5);
 
-% We will define 6 views, the first 2 will influence combined asset classes
-% and the rest will pertain to single stocks.
+% update the views we have
 [P, Omega, q] = BLParameters(tau, mktNoShares, periodReturns, currentPrices);
-
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% 3. Construct and rebalance your portfolios
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -81,9 +84,15 @@ toDay = 0;
 % of each investing period. Value of the portfolio is also tracked daily in
 % a variable called portfValue declared later in this section.
 currentVal = zeros(NoPeriods, NoMethods);
+periodEndVal = zeros(NoPeriods, NoMethods);
 
 % tCost tracks the transcaction costs incurred from rebalancing
 tCost = zeros(NoPeriods-1, NoMethods);
+
+% Define the following to keep track of what we expect our portfolio to return 
+% return per period
+expectedReturns = zeros(NoPeriods, NoMethods);
+expectedVar = zeros(NoPeriods, NoMethods);
 
 % Define the following to keep track of our realized long term rate of
 % return. That is, what would be the daily return of the portfolio, benchmarked
@@ -95,7 +104,7 @@ avgReturnsInitial = zeros(NoPeriods, NoMethods);
 avgReturnsPeriod = zeros(NoPeriods, NoMethods);
 
 % Track the variance of each of our portfolio's value per period
-portVar = zeros(NoPeriods,NoMethods);
+portVarPeriod = zeros(NoPeriods,NoMethods);
 
 for t = 1:NoPeriods    
     % Subset the returns and factor returns corresponding to the current
@@ -129,26 +138,23 @@ for t = 1:NoPeriods
     %   -  epsilon is a size(periodReturns,1) by size(periodReturns,2)
     %      vector of idiosynratic noise
     
-    X = [ones(size(periodFactRet,1), 1) periodFactRet];
-    beta = zeros(4,20);
-    
-    for i=1:size(periodReturns,2)
-        beta(:,i) = regress( periodReturns(:,i),X);
-    end
-    
+    X = [ones(size(periodFactRet,1), 1) periodFactRet];    
+    beta = inv(X'*X)*X'*periodReturns;
+        
     % we calculuate our regression residuals and covariances
     epsilon = periodReturns-X*beta;
     D = cov(epsilon);
 
     % calculating the geometric mean of our factor returns 
     f_bar = [1 (geomean(X(:,2:end)+1) - 1)]';
-    F = cov(X(:,2:end));
+    F = cov(periodFactRet);
     
     % our expected asset returns
     mu = beta'*f_bar;
     
-    % our covariance matrix
-    Q = beta(2:end,:)'*F*beta(2:end,:) + D;
+    % our covariance matrix. Note that here, we do not assume ideal
+    % conditions.
+    Q = beta(2:end,:)'*F*beta(2:end,:) + diag(diag(D));
         
     % Define the target return for the 2 MVO portfolios
     targetRet = mean(mu);
@@ -157,7 +163,7 @@ for t = 1:NoPeriods
     mu_mkt = geomean(table2array(factorRet(:,1))+1)-1;
     var_mkt = var(table2array(factorRet(:,1)));
     lambda = mu_mkt/var_mkt;
-        
+    
     % optimize each portfolios to get the weights 'x'
     x{1}(:,t) = funList{1}(mu, Q, targetRet);
     x{2}(:,t) = funList{2}(mu, Q, targetRet, card);
@@ -180,12 +186,13 @@ for t = 1:NoPeriods
     end
     
     % Complete our per period analysis calculations
+    periodEndVal(t,:) = portfValue(toDay,:);
     initial_returns = (portfValue(fromDay:toDay,:) - initialVal) / initialVal;
     period_returns = ( portfValue(fromDay:toDay,:) - repmat(currentVal(t,:), size(portfValue(fromDay:toDay,:),1), 1) ) ./ repmat(currentVal(t,:), size(portfValue(fromDay:toDay,:),1), 1);
     
     avgReturnsInitial(t,:) = geomean(initial_returns + 1) - 1;
     avgReturnsPeriod(t,:) = geomean(period_returns + 1) - 1;
-    portVar(t,:) = [cov(period_returns(:,1)) cov(period_returns(:,2)) cov(period_returns(:,3))];
+    portRiskPeriod(t,:) = std(period_returns);
     
     % update your calibration and out-of-sample test periods
     calStart = calStart + calmonths(6);
@@ -193,7 +200,7 @@ for t = 1:NoPeriods
     
     testStart = testStart + calmonths(6);
     testEnd = testStart + calmonths(6) - days(1);
-        
+    
     % let us randomly choose tau to be between 0.01 and 0.05
     tau = 0.05 / randi(5);
 
@@ -216,6 +223,18 @@ avgReturnsInitial;
 % investing period. Tracks the return an investor can expect by investing
 % at each period. 
 avgReturnsPeriod;
+
+% calculate the value at risk after each period, based on the value of the
+% end porfolio at the end of each period, the average portfolio returns
+% over each period and the risk of each period. consider loss probability
+% levels of 1%, 5% and 10%.
+lossTolerance = [0.01, 0.05, 0.1];
+
+for i=1:NoMethods
+    for j=1:NoPeriods
+        vatrisk{i}(j,:) = portvrisk(avgReturnsPeriod(j,i), portRiskPeriod(j,i), lossTolerance, periodEndVal(j,i));
+    end
+end
 
 % maximum value of each portfolio and the realization date
 [maxVal, when_max] = max(portfValue);
@@ -320,6 +339,7 @@ pos1 = get(fig2,'Position');
 set(fig2,'PaperPositionMode','Auto','PaperUnits','Inches',...
     'PaperSize',[pos1(3), pos1(4)]);
 
+% If you want to save the figure as .png for use in MS Word
 print(fig2,'mvo-plot','-dpng','-r0');
 
 % MVO with Cardinality Constraints Plot
@@ -336,6 +356,10 @@ pos1 = get(fig3,'Position');
 set(fig3,'PaperPositionMode','Auto','PaperUnits','Inches',...
     'PaperSize',[pos1(3), pos1(4)]);
 
+% If you want to save the figure as .pdf for use in LaTeX
+% print(fig3,'fileName3','-dpdf','-r0');
+
+% If you want to save the figure as .png for use in MS Word
 print(fig3,'mvocard-plot','-dpng','-r0');
 
 % B-L Model Plot
@@ -352,5 +376,7 @@ pos1 = get(fig4,'Position');
 set(fig4,'PaperPositionMode','Auto','PaperUnits','Inches',...
     'PaperSize',[pos1(3), pos1(4)]);
 
+% If you want to save the figure as .png for use in MS Word
 print(fig4,'bl-plot','-dpng','-r0');
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
