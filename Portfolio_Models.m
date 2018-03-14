@@ -7,11 +7,15 @@ format long
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % Load the stock weekly prices and factors weekly returns
-adjClose = readtable('Data_adjClose.csv', 'ReadRowNames', true);
-adjClose.Properties.RowNames = cellstr(datetime(adjClose.Properties.RowNames));
+adjClose = readtable('Data_adjClose.csv');
+adjClose.Properties.RowNames = cellstr(datetime(adjClose.Date));
+size_adjClose = size(adjClose);
+adjClose = adjClose(:,2:size_adjClose(2));
 
-factorRet = readtable('Data_FF_factors.csv', 'ReadRowNames', true);
-factorRet.Properties.RowNames = cellstr(datetime(factorRet.Properties.RowNames));
+factorRet = readtable('Data_FF_factors.csv');
+factorRet.Properties.RowNames = cellstr(datetime(factorRet.Date));
+size_factorRet = size(factorRet);
+factorRet = factorRet(:,2:size_factorRet(2));
 
 riskFree = factorRet(:,4);
 factorRet = factorRet(:,1:3);
@@ -22,8 +26,8 @@ dates   = datetime(factorRet.Properties.RowNames);
 
 % Calculate the stocks' weekly EXCESS returns
 prices  = table2array(adjClose);
-returns = ( prices(2:end,:) - prices(1:end-1,:) ) ./ prices(1:end-1,:);
-returns = returns - ( diag( table2array(riskFree) ) * ones( size(returns) ) );
+returns_raw = ( prices(2:end,:) - prices(1:end-1,:) ) ./ prices(1:end-1,:);
+returns = returns_raw - ( diag( table2array(riskFree) ) * ones( size(returns_raw) ) );
 returns = array2table(returns);
 returns.Properties.VariableNames = tickers;
 returns.Properties.RowNames = cellstr(datetime(factorRet.Properties.RowNames));
